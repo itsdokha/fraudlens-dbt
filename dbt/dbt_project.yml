@@ -1,0 +1,50 @@
+name: fraud_analytics
+version: "1.0.0"
+config-version: 2
+
+profile: fraud_analytics
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+analysis-paths: ["analyses"]
+
+target-path: target
+clean-targets: [target, dbt_packages, logs]
+
+vars:
+  # Порог «крупной» транзакции, USD (≈ P99 суммы по датасету)
+  large_amount_threshold: 500
+  # Сегменты риска клиента по fraud_rate, %
+  customer_high_risk_fraud_rate: 5
+  customer_medium_risk_fraud_rate: 1
+  # Мерчант подозрительный, если его fraud_rate >= N × среднего по датасету
+  suspicious_merchant_rate_multiplier: 2
+  # Окно (день недели × час) рискованное, если fraud_rate >= N × среднего
+  high_risk_window_lift: 2
+
+models:
+  fraud_analytics:
+    staging:
+      +schema: staging
+      +materialized: view
+    marts:
+      +schema: marts
+      +materialized: table
+      +engine: MergeTree()
+
+seeds:
+  fraud_analytics:
+    +schema: staging
+    states:
+      +column_types:
+        state_code: String
+        state_name: String
+        region: String
+        division: String
+
+# dbt_date не содержит реализаций для ClickHouse: сначала ищем clickhouse__* в нашем проекте
+dispatch:
+  - macro_namespace: dbt_date
+    search_order: ["fraud_analytics", "dbt_date"]

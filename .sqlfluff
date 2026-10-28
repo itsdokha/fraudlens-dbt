@@ -1,0 +1,48 @@
+# Конфиг в корне репозитория: sqlfluff берёт templater только из корневого .sqlfluff,
+# поэтому pre-commit и make lint запускаются из корня.
+[sqlfluff]
+dialect = clickhouse
+templater = dbt
+max_line_length = 120
+# LT05 (длина строки) проверяем, остальные правила — по умолчанию.
+# ST06: порядок колонок в select диктуется смыслом витрины, а не типом выражения.
+# AM04: `select *` из CTE — стандартный паттерн dbt (import CTE).
+exclude_rules = ST06, AM04
+large_file_skip_byte_limit = 40000
+
+[sqlfluff:templater:dbt]
+project_dir = dbt
+profiles_dir = dbt
+
+[sqlfluff:templater:jinja]
+apply_dbt_builtins = True
+
+[sqlfluff:indentation]
+tab_space_size = 4
+indent_unit = space
+
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.identifiers]
+extended_capitalisation_policy = consistent
+
+[sqlfluff:rules:capitalisation.functions]
+# в ClickHouse имена функций регистрозависимые (toDate, uniqExact) — не трогаем
+ignore_words_regex = .*
+
+[sqlfluff:rules:capitalisation.literals]
+capitalisation_policy = lower
+
+[sqlfluff:rules:aliasing.table]
+aliasing = explicit
+
+[sqlfluff:rules:aliasing.column]
+aliasing = explicit
+
+[sqlfluff:rules:convention.terminator]
+multiline_newline = false
+
+# Параметрические агрегаты ClickHouse (quantile(0.95)(x), topK(1)(x)) sqlfluff
+# считает двумя скобочными выражениями и требует пробел между ними (LT01).
+# Такие строки помечены `-- noqa: LT01`.
