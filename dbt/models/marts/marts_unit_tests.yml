@@ -1,0 +1,76 @@
+unit_tests:
+  - name: test_customer_risk_segmentation
+    description: >
+      Сегмент берётся из порогов в vars (здесь переопределены: HIGH >= 50%, MEDIUM >= 25%).
+      Граница входит в верхний сегмент: 50% -> HIGH, 25% -> MEDIUM, 0% -> LOW.
+    model: mart_customer_risk_profile
+    overrides:
+      vars:
+        customer_high_risk_fraud_rate: 50
+        customer_medium_risk_fraud_rate: 25
+    given:
+      - input: ref('stg_transactions')
+        format: sql
+        rows: |
+          select
+              arrayJoin([
+                  ('c_high', 1), ('c_high', 1), ('c_high', 0), ('c_high', 0),
+                  ('c_medium', 1), ('c_medium', 0), ('c_medium', 0), ('c_medium', 0),
+                  ('c_low', 0), ('c_low', 0), ('c_low', 0), ('c_low', 0)
+              ]) as row,
+              row.1 as customer_id,
+              toUInt8(row.2) as is_fraud,
+              toDateTime('2020-01-01 10:00:00') as transaction_at,
+              toDate('2020-01-01') as transaction_date,
+              'Ann' as customer_first_name,
+              'Lee' as customer_last_name,
+              'F' as customer_gender,
+              'Boise' as customer_city,
+              'ID' as state_code,
+              'Chef' as customer_job,
+              'Acme' as merchant_name,
+              'travel' as category,
+              100.0 as amount
+    expect:
+      rows:
+        - {customer_id: c_high, transactions_count: 4, fraud_count: 2, fraud_rate: 50, risk_segment: HIGH}
+        - {customer_id: c_medium, transactions_count: 4, fraud_count: 1, fraud_rate: 25, risk_segment: MEDIUM}
+        - {customer_id: c_low, transactions_count: 4, fraud_count: 0, fraud_rate: 0, risk_segment: LOW}
+
+  - name: test_hourly_high_risk_window_flag
+    description: >
+      Окно помечается рискованным, если его fraud_rate >= high_risk_window_lift × средний fraud_rate.
+      Среднее = 2/8 = 25%: окно 23:00 (50%) -> lift 2 -> рискованное, окно 10:00 (0%) -> нет.
+    model: mart_hourly_fraud_pattern
+    given:
+      - input: ref('stg_transactions')
+        format: sql
+        rows: |
+          select
+              arrayJoin([(23, 1), (23, 1), (23, 0), (23, 0), (10, 0), (10, 0), (10, 0), (10, 0)]) as row,
+              toUInt8(1) as day_of_week,
+              'Monday' as day_name,
+              toUInt8(row.1) as transaction_hour,
+              toUInt8(row.2) as is_fraud,
+              100.0 as amount
+    expect:
+      rows:
+        - {transaction_hour: 10, day_part: morning, fraud_rate: 0, fraud_rate_lift: 0, is_high_risk_window: 0}
+        - {transaction_hour: 23, day_part: evening, fraud_rate: 50, fraud_rate_lift: 2, is_high_risk_window: 1}
+
+  - name: test_category_fraud_metrics
+    description: fraud_rate, доля категории во всём фроде и ранг считаются корректно.
+    model: mart_fraud_by_category
+    given:
+      - input: ref('stg_transactions')
+        format: sql
+        rows: |
+          select
+              arrayJoin([('travel', 1, 300.0), ('travel', 0, 100.0), ('home', 1, 50.0), ('home', 0, 50.0), ('home', 0, 50.0), ('home', 0, 50.0)]) as row,
+              row.1 as category,
+              toUInt8(row.2) as is_fraud,
+              row.3 as amount
+    expect:
+      rows:
+        - {category: home, transactions_count: 4, fraud_count: 1, fraud_rate: 25, total_amount: 200, fraud_amount: 50, share_of_all_fraud_pct: 50, fraud_rate_rank: 2}
+        - {category: travel, transactions_count: 2, fraud_count: 1, fraud_rate: 50, total_amount: 400, fraud_amount: 300, share_of_all_fraud_pct: 50, fraud_rate_rank: 1}

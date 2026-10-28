@@ -1,0 +1,185 @@
+version: 2
+
+models:
+  - name: stg_transactions
+    description: >
+      Очищенные и нормализованные транзакции: одна строка = одна транзакция.
+      Строки обрезаны, коды приведены к одному регистру, у мерчантов убран технический
+      префикс `fraud_`. Добавлены суррогатные ключи транзакции и клиента, календарные
+      признаки (dbt_date), сегмент суммы (макрос `amount_bucket`) и расстояние
+      клиент–мерчант.
+    data_tests:
+      - dbt_expectations.expect_table_row_count_to_equal_other_table:
+          arguments:
+            compare_model: source('transactions_db', 'transactions')
+    columns:
+      - name: transaction_id
+        description: Суррогатный ключ транзакции (md5 от времени, мерчанта, суммы, клиента и координат мерчанта).
+        data_tests: [unique, not_null]
+      - name: transaction_at
+        description: Дата и время транзакции.
+        data_tests: [not_null]
+      - name: transaction_date
+        description: Дата транзакции.
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'2019-01-01'"
+                max_value: "'2020-12-31'"
+      - name: transaction_month
+        description: Первый день месяца транзакции.
+      - name: transaction_hour
+        description: Час транзакции (0–23).
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 23
+      - name: day_of_week
+        description: ISO-день недели (1 = понедельник … 7 = воскресенье), dbt_date.day_of_week.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5, 6, 7]
+                quote: false
+      - name: day_name
+        description: Название дня недели (dbt_date.day_name).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday]
+      - name: customer_id
+        description: Суррогатный ключ клиента (имя, фамилия, улица, индекс). В исходных данных ID клиента нет.
+        data_tests: [not_null]
+      - name: customer_first_name
+        description: Имя клиента.
+      - name: customer_last_name
+        description: Фамилия клиента.
+      - name: customer_gender
+        description: Пол клиента.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["M", "F"]
+      - name: customer_street
+        description: Улица и дом клиента.
+      - name: customer_city
+        description: Город клиента.
+      - name: state_code
+        description: Двухбуквенный код штата клиента.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_states')
+                field: state_code
+      - name: customer_post_code
+        description: Почтовый индекс клиента.
+      - name: city_population
+        description: Население города клиента.
+      - name: customer_job
+        description: Профессия клиента.
+      - name: customer_lat
+        description: Широта клиента.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: -90
+                max_value: 90
+      - name: customer_lon
+        description: Долгота клиента.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: -180
+                max_value: 180
+      - name: merchant_name
+        description: Название мерчанта без префикса `fraud_`.
+        data_tests: [not_null]
+      - name: category
+        description: Категория покупки.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - entertainment
+                  - food_dining
+                  - gas_transport
+                  - grocery_net
+                  - grocery_pos
+                  - health_fitness
+                  - home
+                  - kids_pets
+                  - misc_net
+                  - misc_pos
+                  - personal_care
+                  - shopping_net
+                  - shopping_pos
+                  - travel
+      - name: merchant_lat
+        description: Широта мерчанта.
+      - name: merchant_lon
+        description: Долгота мерчанта.
+      - name: customer_merchant_distance_km
+        description: Расстояние по большому кругу между клиентом и мерчантом, км.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 20040
+      - name: amount
+        description: Сумма транзакции, USD (округлена до центов).
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                strictly: true
+      - name: amount_bucket
+        description: Сегмент суммы (макрос amount_bucket) — micro <10, small <50, medium <200, large < large_amount_threshold, very_large.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [micro, small, medium, large, very_large]
+      - name: is_large_transaction
+        description: 1, если сумма >= var('large_amount_threshold').
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+                quote: false
+      - name: is_fraud
+        description: Метка фрода (1 = мошенническая транзакция).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+                quote: false
+
+  - name: stg_states
+    description: Справочник штатов США (seed `states`) с регионом и подрегионом по классификации US Census.
+    columns:
+      - name: state_code
+        description: Двухбуквенный код штата.
+        data_tests: [unique, not_null]
+      - name: state_name
+        description: Полное название штата.
+        data_tests: [not_null]
+      - name: region
+        description: Регион по US Census.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [Northeast, Midwest, South, West]
+      - name: division
+        description: Подрегион (division) по US Census.
+
+seeds:
+  - name: states
+    description: 50 штатов США + округ Колумбия. Используется для обогащения географических витрин.
+    columns:
+      - name: state_code
+        data_tests: [unique, not_null]

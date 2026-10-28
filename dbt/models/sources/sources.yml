@@ -1,0 +1,65 @@
+version: 2
+
+sources:
+  - name: transactions_db
+    description: >
+      Сырые данные о карточных транзакциях из ДЗ по ClickHouse
+      (Kaggle teta-ml-1-2025, train.csv). Загружаются в ClickHouse при старте
+      docker-compose (clickhouse/init).
+    database: transactions_db
+    schema: transactions_db
+    tables:
+      - name: transactions
+        description: Одна строка = одна карточная транзакция клиента у мерчанта с меткой фрода.
+        columns:
+          - name: transaction_time
+            description: Дата и время транзакции.
+            data_tests: [not_null]
+          - name: merch
+            description: Название мерчанта (с префиксом `fraud_` из исходного датасета).
+            data_tests: [not_null]
+          - name: cat_id
+            description: Категория покупки (14 значений).
+            data_tests: [not_null]
+          - name: amount
+            description: Сумма транзакции, USD.
+            data_tests: [not_null]
+          - name: name_1
+            description: Имя клиента.
+          - name: name_2
+            description: Фамилия клиента.
+          - name: gender
+            description: Пол клиента (M/F).
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ["M", "F"]
+          - name: street
+            description: Адрес клиента (улица, дом).
+          - name: one_city
+            description: Город клиента.
+          - name: us_state
+            description: Двухбуквенный код штата США (50 штатов + DC).
+            data_tests: [not_null]
+          - name: post_code
+            description: Почтовый индекс клиента.
+          - name: lat
+            description: Широта клиента.
+          - name: lon
+            description: Долгота клиента.
+          - name: population_city
+            description: Население города клиента.
+          - name: jobs
+            description: Профессия клиента.
+          - name: merchant_lat
+            description: Широта мерчанта.
+          - name: merchant_lon
+            description: Долгота мерчанта.
+          - name: target
+            description: Метка фрода (1 = мошенническая транзакция).
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: [0, 1]
+                    quote: false

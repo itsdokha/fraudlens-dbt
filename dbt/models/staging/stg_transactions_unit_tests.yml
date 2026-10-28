@@ -1,0 +1,19 @@
+unit_tests:
+  - name: test_stg_transactions_cleaning_and_buckets
+    description: >
+      Нормализация строк, удаление префикса `fraud_`, календарные признаки dbt_date
+      и границы бакетов макроса amount_bucket.
+    model: stg_transactions
+    given:
+      - input: source('transactions_db', 'transactions')
+        rows:
+          - {transaction_time: "2020-02-10 15:26:00", merch: " fraud_Acme Inc ", cat_id: "Travel", amount: 9.99, name_1: "Ann", name_2: "Lee", gender: "f", street: "1 Main St", one_city: "Boise", us_state: "id", post_code: "83701", lat: 43.6, lon: -116.2, population_city: 1000, jobs: "Chef", merchant_lat: 43.7, merchant_lon: -116.3, target: 0}
+          - {transaction_time: "2020-02-15 23:05:00", merch: "fraud_Acme Inc", cat_id: "travel", amount: 10, name_1: "Ann", name_2: "Lee", gender: "F", street: "1 Main St", one_city: "Boise", us_state: "ID", post_code: "83701", lat: 43.6, lon: -116.2, population_city: 1000, jobs: "Chef", merchant_lat: 43.7, merchant_lon: -116.3, target: 1}
+          - {transaction_time: "2020-02-16 08:00:00", merch: "fraud_Acme Inc", cat_id: "travel", amount: 199.99, name_1: "Ann", name_2: "Lee", gender: "F", street: "1 Main St", one_city: "Boise", us_state: "ID", post_code: "83701", lat: 43.6, lon: -116.2, population_city: 1000, jobs: "Chef", merchant_lat: 43.7, merchant_lon: -116.3, target: 0}
+          - {transaction_time: "2020-02-17 12:00:00", merch: "fraud_Acme Inc", cat_id: "travel", amount: 500, name_1: "Ann", name_2: "Lee", gender: "F", street: "1 Main St", one_city: "Boise", us_state: "ID", post_code: "83701", lat: 43.6, lon: -116.2, population_city: 1000, jobs: "Chef", merchant_lat: 43.7, merchant_lon: -116.3, target: 0}
+    expect:
+      rows:
+        - {merchant_name: "Acme Inc", category: "travel", state_code: "ID", customer_gender: "F", amount_bucket: "micro", is_large_transaction: 0, day_of_week: 1, day_name: "Monday", transaction_hour: 15, is_fraud: 0}
+        - {merchant_name: "Acme Inc", category: "travel", state_code: "ID", customer_gender: "F", amount_bucket: "small", is_large_transaction: 0, day_of_week: 6, day_name: "Saturday", transaction_hour: 23, is_fraud: 1}
+        - {merchant_name: "Acme Inc", category: "travel", state_code: "ID", customer_gender: "F", amount_bucket: "medium", is_large_transaction: 0, day_of_week: 7, day_name: "Sunday", transaction_hour: 8, is_fraud: 0}
+        - {merchant_name: "Acme Inc", category: "travel", state_code: "ID", customer_gender: "F", amount_bucket: "very_large", is_large_transaction: 1, day_of_week: 1, day_name: "Monday", transaction_hour: 12, is_fraud: 0}
